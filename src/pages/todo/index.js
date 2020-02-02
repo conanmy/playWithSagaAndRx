@@ -1,29 +1,44 @@
 import React from 'react'
 import { connect } from 'react-redux'
-import { addTodo, changeInput } from './store'
+import { addTodo, removeTodo, undoRemove, changeInput } from './store'
 
 function mapStateToProps(state) {
-  const { todos, todo, showCongratulation } = state.todoList
+  const { todos, todo, showCongratulation, showUndoButton } = state.todoList
   return {
     todos,
     todo,
     showCongratulation,
+    showUndoButton,
   }
 }
 
 const mapDispatchToProps = {
   addTodo,
   changeInput,
+  removeTodo,
+  undoRemove,
 }
 
 function TodoList(props) {
-  const { todos, todo, showCongratulation, addTodo, changeInput } = props
+  const {
+    todos, todo, showCongratulation, showUndoButton,
+    addTodo, removeTodo, undoRemove, changeInput
+  } = props
   return (
     <div>
       <div>
       {
-        todos.map(todo => <p>{todo}</p>)
+        todos.map(todo => <p>
+          {todo}<button onClick={() => removeTodo(todo)}>Delete</button>
+        </p>)
       }
+      </div>
+      <div>
+        {
+          showUndoButton
+          ? <button onClick={() => undoRemove()}>Undo</button>
+          : null
+        }
       </div>
       <div>
         <input
