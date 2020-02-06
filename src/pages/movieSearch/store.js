@@ -1,4 +1,6 @@
-import { put, select, all, throttle } from "redux-saga/effects"
+import { ofType } from 'redux-observable'
+import { merge, from, interval } from 'rxjs'
+import { combineLatest, filter, map, switchMap, throttle, distinctUntilChanged } from 'rxjs/operators'
 
 const API_KEY = 'c950bb6e340adb76324c159ff7b97664'
 
@@ -10,28 +12,35 @@ export const changeParam = ({key, value}) => ({
   payload: { key, value }
 })
 
-export function* movieSearchSaga() {
-  yield all([
-    controlParamChange()
-  ])
-}
+export const handleParamChangeEpic = (action$, state$) => {
+  const latestParamChange$ = action$.pipe(
+    ofType(CHANGE_PARAM),
+    combineLatest(state$, (action, state) => state.movieSearch.params),
+    distinctUntilChanged(),
+    throttle(() => interval(2000), { leading: true, trailing: true }),
+  )
 
-function* controlParamChange() {
-  yield throttle(2000, CHANGE_PARAM, handleParamChange)
-}
+  const emptyQueryChange$ = latestParamChange$.pipe(
+    filter(params => !params.query),
+    map(() => ({ type: GET_MOVIES_DONE, payload: [] }))
+  )
 
-function* handleParamChange() {
-  const { movieSearch: { params } } = yield select()
-  if (params.query) {
-    const queryString = Object.keys(params)
+  const nonEmptyQueryChange$ = latestParamChange$.pipe(
+    filter(params => params.query),
+    map(params => Object.keys(params)
       .map(key => `${key}=${params[key]}`).concat([`api_key=${API_KEY}`])
       .join('&')
-    let res = yield fetch(`https://api.themoviedb.org/3/search/movie?${queryString}`)
-    const { results: movies } = yield res.json()
-    yield put({type: GET_MOVIES_DONE, payload: movies})
-  } else {
-    yield put({type: GET_MOVIES_DONE, payload: []})
-  }
+    ),
+    switchMap(queryString => 
+      from(fetch(`https://api.themoviedb.org/3/search/movie?${queryString}`)).pipe(
+        switchMap(res => from(res.json()).pipe(
+          map(({results: movies}) => ({ type: GET_MOVIES_DONE, payload: movies }))
+        )),
+      )
+    )
+  )
+
+  return merge(emptyQueryChange$, nonEmptyQueryChange$)
 }
 
 const initialState = {

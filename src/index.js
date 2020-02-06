@@ -8,16 +8,16 @@ import { BrowserRouter } from 'react-router-dom'
 import { createStore, combineReducers, applyMiddleware } from 'redux'
 import { Provider } from 'react-redux'
 import reducers from './rootReducer'
-import createSagaMiddleware from 'redux-saga'
-import rootSaga from './sagas'
-const sagaMiddleware = createSagaMiddleware()
+import { createEpicMiddleware } from 'redux-observable'
+import rootEpic from './epics'
+const epicMiddleware = createEpicMiddleware()
 
 
 const store = createStore(
   combineReducers(reducers),
-  applyMiddleware(sagaMiddleware),
+  applyMiddleware(epicMiddleware),
 )
-sagaMiddleware.run(rootSaga)
+epicMiddleware.run(rootEpic)
 
 ReactDOM.render(
   <Provider store={store}>
