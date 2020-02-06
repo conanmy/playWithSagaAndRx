@@ -4,6 +4,7 @@ import './App.css';
 import { Route, Switch } from 'react-router'
 import TodoList from './pages/todo'
 import EasterEgg from './pages/easterEgg'
+import MovieSearch from './pages/movieSearch'
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Switch>
           <Route path="/" component={TodoList} exact />
           <Route path="/easter" component={EasterEgg} />
+          <Route path="/movie" component={MovieSearch} />
         </Switch>
       </header>
     </div>
