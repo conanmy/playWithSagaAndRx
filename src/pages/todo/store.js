@@ -1,4 +1,9 @@
-import { take, put, select, all, race, call, delay } from "redux-saga/effects"
+import {
+  bufferCount, delay, map, mapTo, filter, bufferWhen,
+  withLatestFrom, tap, sequenceEqual, combineLatest
+} from 'rxjs/operators'
+import { ofType, combineEpics } from 'redux-observable'
+import { from, merge } from 'rxjs'
 
 const ADD_TODO = 'FLOW_CONTROL/ADD_TODO'
 const REMOVE_TODO = 'TODOLIST/REMOVE_TODO'
@@ -33,44 +38,55 @@ export function changeInput(text) {
   }
 }
 
-export function* todoListSaga() {
-  yield all([
-    addTodoSaga(),
-    removeTodoSaga(),
-  ])
+const removeTodoEpic = action$ => action$.pipe(
+  ofType(REMOVE_TODO),
+  mapTo({ type: SHOW_UNDO_BUTTON, payload: true })
+)
+
+const undoRemoveEpic = action$ => action$.pipe(
+  ofType(UNDO_REMOVE),
+  mapTo({ type: SHOW_UNDO_BUTTON, payload: false })
+)
+
+const undoDelayEpic = (action$, state$) => {
+  const removeTodo$ = action$.pipe(ofType(REMOVE_TODO))
+  const delay$ = removeTodo$.pipe(delay(5000))
+  const undo$ = action$.pipe(ofType(UNDO_REMOVE))
+
+  const undoRemove$ = undo$.pipe(
+    combineLatest(removeTodo$, (undo, removeTodo) => removeTodo),
+    map(removeAction => ({ type: ADD_TODO, payload: removeAction.payload })),
+  )
+  const undoDelayed$ = merge(
+    removeTodo$.pipe(mapTo('remove')),
+    undo$.pipe(mapTo('undo')),
+    delay$.pipe(mapTo('delay'))
+  ).pipe(
+    bufferWhen(() => delay$),
+    sequenceEqual(from(['remove', 'delay'])),
+    filter(ev => true),
+    withLatestFrom(state$),
+    tap(([, state]) => syncLocalStorage(state.todoList.todos)),
+    mapTo({ type: SHOW_UNDO_BUTTON, payload: false }),
+  )
+
+  return merge(undoRemove$, undoDelayed$)
 }
 
-function* removeTodoSaga() {
-  while (true) {
-    const action = yield take(REMOVE_TODO)
-    let targetTodo = action.payload
-    yield put({ type: SHOW_UNDO_BUTTON, payload: true })
-    const { undo, remove } = yield race({
-      undo: take(UNDO_REMOVE),
-      remove: delay(5000),
-    })
-    yield put({ type: SHOW_UNDO_BUTTON, payload: false })
-    if (undo) {
-      yield put({ type: ADD_TODO, payload: targetTodo })
-    } else if (remove) {
-      yield call(syncLocalStorage)
-    }
-  }
-}
+const addTodoEpic = (action$, state$) => action$
+  .pipe(
+    filter(action => action.type === ADD_TODO && !action.payload),
+    bufferCount(3),
+    withLatestFrom(state$),
+    tap(([, state]) => syncLocalStorage(state.todoList.todos)),
+    mapTo({ type: SHOW_CONGRATULATION })
+  )
 
-function* addTodoSaga() {
-  for (let i = 0; i < 3; i++) {
-    yield take(action => action.type === ADD_TODO && !action.payload)
-    yield call(syncLocalStorage)
-  }
-  yield put({type: SHOW_CONGRATULATION})
-}
-
-function* syncLocalStorage() {
-  const state = yield select()
-  let todos = state.todoList.todos
+function syncLocalStorage(todos) {
   localStorage.setItem('todos', todos.join(','))
 }
+
+export const todoListEpic = combineEpics(addTodoEpic, removeTodoEpic, undoRemoveEpic, undoDelayEpic)
 
 let localTodos = localStorage.getItem('todos')
 const initialState = {
